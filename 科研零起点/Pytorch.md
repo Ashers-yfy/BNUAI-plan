@@ -1,0 +1,2 @@
+9.22
+pytorch的环境anaconda 以及pytorch的下载完成

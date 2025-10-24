@@ -1,4 +1,82 @@
+
 1.打开sketchfab的页面右键--检查--找到四个cookies然后形成json文件放在脚本同一个目录中
 2.配置button.json文件（一个代码测试后形成）
 3.替换脚本中的这两处
 4.替换分类和数量就可以批量下载
+
+注：加载 cookies：模拟登录状态，访问受限模型。
+请求 API：传分类、License、可下载等参数。
+解析 JSON：拿到模型信息列表 results。
+去重：用 uid 去掉重复模型。
+翻页：通过 cursors.next 获取下一页，直到达到 LIMIT 或没有下一页。
+保存：把最终抓取到的唯一 viewerUrl 列表存 JSON 文件。
+
+1️⃣ Cookies
+
+定义：
+
+Cookies 是网站在你浏览器里存的一小段信息，用来 记录用户状态（登录、偏好、会话等）。
+
+在你脚本里的作用：
+
+你用 requests.get(url, cookies=cookies) 带上 cookies，就相当于模拟你 已经登录的浏览器 去访问 Sketchfab。
+
+如果没有 cookies，脚本可能拿不到可下载模型，或者返回限制访问的页面。
+
+2️⃣ API（Application Programming Interface）
+
+定义：
+
+API 是网站提供的接口，允许程序直接获取数据，而不用通过浏览器手动操作网页。
+
+数据通常以 JSON 格式 返回，方便程序解析。
+
+在你脚本里的作用：
+
+你访问 https://sketchfab.com/v3/search 这个 API，而不是抓 HTML 页面。
+
+参数比如 categories、features、licenses 告诉 API 你想要哪类模型。
+
+API 返回的 JSON 里包含模型 ID、链接、名称等信息。
+
+简单比喻：API 就像网站的后门，让程序直接问 “给我这些模型”，而不用像人一样在网页上点来点去。
+
+3️⃣ Cursors（游标分页）
+
+定义：
+
+Cursor 是 翻页用的标记，告诉 API “我想要下一页的数据”。
+
+不同于传统的页码，游标是一个加密字符串，由 API 返回，保证翻页稳定。
+
+在你脚本里的作用：
+
+cursor = data.get("cursors", {}).get("next")
+params["cursor"] = cursor
+
+
+cursors.next 指向下一页的数据。
+
+脚本用这个值不断循环请求，直到达到目标数量或者没有下一页。
+
+类比：你在看一堆卡片，游标就像在说 “从这里开始看下一堆卡片”。
+
+4️⃣ 控制鼠标（pyautogui）
+
+定义：
+
+pyautogui 是 Python 的自动化 GUI 操作库，可以模拟 鼠标点击、移动、键盘输入。
+
+在你脚本里的作用：
+
+你抓到的模型链接，需要通过 xd.studio 软件 批量下载。
+
+pyautogui 用来：
+
+点击 xd.studio 的“新建下载”按钮
+
+粘贴模型链接
+
+点击“确定”开始下载
+
+简单比喻：pyautogui 就像一个 虚拟手，帮你在软件界面上点击、输入、确认。

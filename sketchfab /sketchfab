@@ -1,1 +1,157 @@
+import requests
+import json
+import time
+import pyautogui
+import pyperclip
 
+# ==================【参数设置】==================
+CATEGORY = "art-abstract"   # 分类 slug
+LICENSE = "cc0"             # License slug，例如 cc0, by, by-nc
+LIMIT = 300                 # 抓取模型数量上限
+COOKIES_FILE = "cookies.json"                    //配置cookies.json
+OUTPUT_FILE = f"sketchfab_{CATEGORY}_{LIMIT}.json"
+
+CLICK_DELAY = 2
+BUTTON_POS_FILE = "button_positions.json"    //配置button.json
+SAVE_LOG = "download_log.json"
+
+# ==================【函数：加载 cookies】==================
+def load_cookies():
+    cookies_list = json.load(open(COOKIES_FILE, "r", encoding="utf-8"))
+    return {c["name"]: c["value"] for c in cookies_list}
+
+# ==================【函数：抓取 Sketchfab 模型链接（去重版）】==================
+def fetch_model_links():
+    url = "https://sketchfab.com/v3/search"
+    params = {
+        "type": "models",
+        "categories": CATEGORY,
+        "features": "downloadable",
+        "licenses": LICENSE,
+        "count": 48,
+    }
+
+    cookies = load_cookies()
+    all_links = []
+    seen_uids = set()
+    cursor = None
+
+    while len(all_links) < LIMIT:
+        if cursor:
+            params["cursor"] = cursor
+
+        print(f"📡 请求: {url}  cursor={cursor}")
+        resp = requests.get(url, params=params, cookies=cookies)
+
+        if resp.status_code != 200:
+            print(f"❌ 请求失败: {resp.status_code} {resp.text[:200]}")
+            break
+
+        data = resp.json()
+        results = data.get("results", [])
+        if not results:
+            print("⚠️ 没有更多模型了。")
+            break
+
+        new_count, dup_count = 0, 0
+        for m in results:
+            uid = m.get("uid")
+            link = m.get("viewerUrl")
+            if not uid or not link:
+                continue
+            if uid in seen_uids:
+                dup_count += 1
+                continue
+
+            seen_uids.add(uid)
+            all_links.append(link)
+            new_count += 1
+            print(f"✅ 抓到: {link}")
+
+            if len(all_links) >= LIMIT:
+                break
+
+        print(f"📈 本页新增 {new_count} 条，重复 {dup_count} 条，总共 {len(all_links)} 条")
+
+        cursor = data.get("cursors", {}).get("next")
+        if not cursor:
+            print("🚫 没有下一页 cursor 了。")
+            break
+
+        time.sleep(1.2)  # 延迟防缓存
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(all_links, f, ensure_ascii=False, indent=2)
+
+    print(f"\n📦 共抓取 {len(all_links)} 个去重后模型链接，已保存到 {OUTPUT_FILE}")
+    return all_links
+
+# ==================【函数：加载按钮坐标】==================
+def load_button_positions():
+    with open(BUTTON_POS_FILE, "r", encoding="utf-8") as f:
+        pos = json.load(f)
+    return pos
+
+# ==================【函数：xd.studio 自动化下载】==================
+def xdstudio_download(model_links, positions):
+    success, fail, paid = [], [], []
+
+    print("\n⏳ 请确保 xd.studio 窗口已打开，5 秒后开始自动下载...")
+    time.sleep(5)
+
+    for i, link in enumerate(model_links, 1):
+        print(f"\n({i}/{len(model_links)}) 添加下载任务：{link}")
+
+        if "store" in link:
+            print("💰 检测到付费模型，跳过")
+            paid.append(link)
+            continue
+
+        try:
+            # 点击“新建下载”
+            pyautogui.moveTo(positions['new'][0], positions['new'][1], duration=0.3)
+            pyautogui.click()
+            time.sleep(0.3)
+
+            # 粘贴链接
+            pyperclip.copy(link)
+            pyautogui.hotkey("ctrl", "v")
+            time.sleep(0.3)
+
+            # 点击“确定”
+            pyautogui.moveTo(positions['ok'][0], positions['ok'][1], duration=0.3)
+            pyautogui.click()
+            time.sleep(CLICK_DELAY)
+
+            success.append(link)
+
+        except Exception as e:
+            print(f"❌ 下载失败: {e}")
+            fail.append(link)
+
+    # 保存日志
+    log_data = {"成功": success, "失败": fail, "付费": paid}
+    with open(SAVE_LOG, "w", encoding="utf-8") as f:
+        json.dump(log_data, f, ensure_ascii=False, indent=2)
+
+    print("\n📊 下载完成！")
+    print(f"✅ 成功 {len(success)} | ❌ 失败 {len(fail)} | 💰 付费 {len(paid)}")
+    print(f"🧾 记录已保存至 {SAVE_LOG}")
+
+# ==================【主流程】==================
+def main():
+    print("🚀 开始抓取 Sketchfab 模型链接...")
+    links = fetch_model_links()
+
+    if not links:
+        print("❌ 未抓取到模型链接，程序结束。")
+        return
+
+    print("\n✅ 抓取完成，准备自动下载...")
+    positions = load_button_positions()
+    xdstudio_download(links, positions)
+
+# ==================【入口】==================
+if __name__ == "__main__":
+    pyautogui.FAILSAFE = True
+    main()
